@@ -1,0 +1,9 @@
+package: github.com/cosmincojocar/adal
+import:
+- package: github.com/dgrijalva/jwt-go
+  version: v3.0.0
+testImport:
+- package: github.com/Azure/go-autorest
+  version: v7.3.0
+  subpackages:
+  - autorest/mocks
