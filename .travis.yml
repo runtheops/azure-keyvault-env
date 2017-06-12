@@ -1,2 +1,9 @@
 language: go
+go:
+  - 1.8
+
 install: true
+
+script:
+  - go build -o azure-key-vault
+
