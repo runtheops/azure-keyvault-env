@@ -14,7 +14,7 @@ install:
   - pip install --user awscli && export PATH=$PATH:$HOME/.local/bin
 
 script:
-  - go build -o azure-key-vault
+  - go build -ldflags "-linkmode external -extldflags -static" -o azure-key-vault
 
 after_success:
   - aws s3 cp azure-key-vault s3://runtheops-public/builds/azure-key-vault-${BRANCH}
