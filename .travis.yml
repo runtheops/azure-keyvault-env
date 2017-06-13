@@ -1,9 +1,20 @@
 language: go
+
 go:
   - 1.8
 
-install: true
+env:
+  global:
+    - BRANCH=${TRAVIS_PULL_REQUEST_BRANCH:-$TRAVIS_BRANCH}
+    - AWS_DEFAULT_REGION=us-east-1
+    - AWS_ACCESS_KEY_ID=AKIAIAOCBKA4NOV2IJQQ
+    - secure: slncSwbqYV46KNrSVzAqVOFi+C49QUiwcUX8GPYJhIrkt+bryoUlip6I4IgHBbDaNL/GzvA1hN2A3RRkFIRL26mEFg07wupbQ4VotQ/gScjVDpRM6ZmocltYQJgH98uyHs8Qh+xkalJlmsexaQG7k8STFqFy3llS/9DOd7D4DuaqbakQaIhJkqLloLJXuSeRtDvFkC3xSY00/4sAlnzKG2ybZmO8MKbV5GIemVYVkP4CTAe2sN1cyjz4Bx6g7LmSOp0qYDY9ieyjxm9m1tqseD50js9D6hcojrCt2kRkJ0SVpDKjnQQUPZ4vDO8LbIIxQQkHqz4yRxhRW//qZnPkPwimL32oi9whKJxPInTeX8//GF6dzPLwIgQbYR9OciYR4ZPPRBSwbfhCyH3Sot8kLQ73BKYjHJ1Zbk/O7EnLWWGOxRYzeBvBZNHCAwEQbzxXThr5rljBJ3vIcKCMRFeQ/HN6SHjE3RNnAfr7mrhK5p87oOnW3oiCfyk3/lyr+4tKdoogKTWsM9m9U5uGQk88pfW+qrQzZ6J9fH9vfr9QD21ksxpudwa701/ILT4MFX01VqiTFnjEb90vO4/9PpxlSzmWOdLJbG55V3nHEWDx/AJFKe+Y1XCGBfX5BlxcghOBzozbVzmUROl0bmD+LkYO343UBLpEzHE+kRfitieYsKk=
+    
+install:
+  - pip install --user awscli && export PATH=$PATH:$HOME/.local/bin
 
 script:
   - go build -o azure-key-vault
 
+after_success:
+  - aws s3 cp azure-key-vault s3://runtheops-public/builds/azure-key-vault-${BRANCH}
