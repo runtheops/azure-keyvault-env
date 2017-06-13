@@ -1,4 +1,5 @@
 # Azure KeyVault Env
+[![Build Status](https://travis-ci.org/runtheops/azure-keyvault-env.svg?branch=master)](https://travis-ci.org/runtheops/azure-keyvault-env)
 
 A tool that populates secrets stored in Azure Keyvault into environment variables. It can also write them out to files. An idea behind it is to have a simple way to securely store secrets and populate them in Docker containers on instances running in Azure.
 
