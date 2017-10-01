@@ -22,8 +22,7 @@ import (
 const (
 	activeDirectoryEndpoint = "https://login.microsoftonline.com/"
 	resource                = "https://vault.azure.net"
-	prefix                  = "keyvault://"
-	envPrefix               = "AZURE"
+	akePrefix               = "AKE"
 )
 
 type option struct {
@@ -36,15 +35,18 @@ var (
 	tenantID        string
 	applicationID   string
 	certificatePath string
+	servicePrefix	string
 )
 
 func init() {
-	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], envPrefix, 0)
+
+	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], akePrefix, 0)
 
 	fs.StringVar(&vaultName, "vaultName", "", "key vault from which secrets are retrieved")
 	fs.StringVar(&tenantID, "tenantId", "", "tenant id")
 	fs.StringVar(&applicationID, "applicationId", "", "application id for service principal")
 	fs.StringVar(&certificatePath, "certificatePath", "", "path to pk12/PFC application certificate")
+	fs.StringVar(&servicePrefix, "servicePrefix", "", "prefix to filter keys for service")
 
 	fs.Parse(os.Args[1:])
 
@@ -53,6 +55,7 @@ func init() {
 		option{name: "tenantId", value: tenantID},
 		option{name: "applicationId", value: applicationID},
 		option{name: "certificatePath", value: certificatePath},
+		option{name: "servicePrefix", value: servicePrefix},
 	)
 }
 
@@ -163,38 +166,43 @@ func expandEnviron(vaultName string,
 	var exportStrings []string
 	var secretName string
 	var secretDest string
+	var secretFile bool
 
 	vaultClient := keyvault.New()
 	vaultClient.Authorizer = autorest.NewBearerAuthorizer(spt)
 	vaultURL := fmt.Sprintf("https://%s.vault.azure.net", vaultName)
 
-	for _, envVar := range os.Environ() {
-		k, v := splitVar(envVar)
+	secretList, err := vaultClient.GetSecrets( vaultURL,nil)
+	if err != nil {
+		return nil, fmt.Errorf("error on getting secrets list: %v", err)
+	}
 
-		if strings.HasPrefix(v, prefix) {
-			secretString := v[len(prefix):]
-			parts := strings.Split(secretString, ":")
-			switch len(parts) {
-			case 1:
-				secretName = parts[0]
-			case 2:
-				secretName = parts[0]
-				secretDest = parts[1]
-			default:
-				return nil, fmt.Errorf("failed to parse secret with key \"%s\": value string is malformed", k)
+	for _, secret := range *secretList.Value {
+		secretKeyUrl := strings.Split(*secret.ID,"/")
+		secretKey := secretKeyUrl[len(secretKeyUrl)-1]
+
+		if strings.HasPrefix(secretKey, servicePrefix) {
+			secretName = secretKey[len(servicePrefix)+1:]
+
+			if strings.HasSuffix(secretName, "-file") {
+				secretName = secretName[:len(secretName)-5]
+				secretFile = true
 			}
 
-			secret, err := vaultClient.GetSecret(vaultURL, secretName, "")
+			secret, err := vaultClient.GetSecret(vaultURL, secretKey, "")
 			if err != nil {
-				return nil, fmt.Errorf("failed to obtain secret with key \"%s\" from vault: %v", secretName, err)
+				return nil, fmt.Errorf("failed to obtain secret with key \"%s\" from vault: %v", secretKey, err)
 			}
 
 			secretValue := *secret.Value
-			if secretDest != "" {
+			if secretFile {
 				secretContent, err := base64.StdEncoding.DecodeString(secretValue)
 				if err != nil {
-					return nil, fmt.Errorf("failed to base64 decode secret with key \"%s\": %v", secretName, err)
+					return nil, fmt.Errorf("failed to base64 decode secret with key \"%s\": %v", secretKey, err)
 				}
+
+				secretDest = strings.Split(string(secretContent), "\r\n")[0]
+				secretContent = secretContent[len(secretDest)+2:]
 
 				err = ioutil.WriteFile(secretDest, secretContent, 0644)
 				if err != nil {
@@ -203,12 +211,13 @@ func expandEnviron(vaultName string,
 				secretValue = secretDest
 			}
 
-			exportString := fmt.Sprintf("export %s=\"%s\"", k, secretValue)
+			exportString := fmt.Sprintf("export %s=\"%s\"", strings.Replace(strings.ToUpper(secretName), "-", "_", -1), secretValue)
 			exportStrings = append(exportStrings, exportString)
 			if err != nil {
-				return nil, fmt.Errorf("failed to update environment variable \"%s\": %v", k, err)
+				return nil, fmt.Errorf("failed to update environment variable \"%s\": %v", secretName, err)
 			}
 		}
+
 	}
 
 	return exportStrings, nil
