@@ -12,6 +12,7 @@ import (
 
 	"crypto/tls"
 
+	"encoding/json"
 	"github.com/Azure/azure-sdk-for-go/dataplane/keyvault"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/cosmincojocar/adal"
@@ -30,12 +31,18 @@ type option struct {
 	value string
 }
 
+type envVar struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 var (
 	vaultName       string
 	tenantID        string
 	applicationID   string
 	certificatePath string
-	servicePrefix	string
+	servicePrefix   string
+	jsonOutput      bool
 )
 
 func init() {
@@ -47,6 +54,7 @@ func init() {
 	fs.StringVar(&applicationID, "applicationId", "", "application id for service principal")
 	fs.StringVar(&certificatePath, "certificatePath", "", "path to pk12/PFC application certificate")
 	fs.StringVar(&servicePrefix, "servicePrefix", "", "prefix to filter keys for service")
+	fs.BoolVar(&jsonOutput, "json", false, "json output")
 
 	fs.Parse(os.Args[1:])
 
@@ -75,13 +83,19 @@ func main() {
 		log.Fatalf("Failed to acquire a token for resource %s. Error: %v", resource, err)
 	}
 
-	exportStrings, err := expandEnviron(vaultName, spt)
+	envVars, err := expandVars(vaultName, spt)
 	if err != nil {
 		log.Fatalf("Failed to expand environment: %v", err)
 	}
 
-	for _, s := range exportStrings {
-		fmt.Println(s)
+	if jsonOutput {
+		output, _ := json.Marshal(envVars)
+		fmt.Println(string(output))
+	} else {
+		for key, value := range envVars {
+			exportString := fmt.Sprintf("export %s=\"%s\"", key, value)
+			fmt.Println(exportString)
+		}
 	}
 }
 
@@ -161,24 +175,25 @@ func splitVar(v string) (key, val string) {
 	return parts[0], parts[1]
 }
 
-func expandEnviron(vaultName string,
-	spt *adal.ServicePrincipalToken) ([]string, error) {
+func expandVars(vaultName string,
+	spt *adal.ServicePrincipalToken) (map[string]string, error) {
 	var exportStrings []string
 	var secretName string
 	var secretDest string
 	var secretFile bool
+	exportVars := make(map[string]string)
 
 	vaultClient := keyvault.New()
 	vaultClient.Authorizer = autorest.NewBearerAuthorizer(spt)
 	vaultURL := fmt.Sprintf("https://%s.vault.azure.net", vaultName)
 
-	secretList, err := vaultClient.GetSecrets( vaultURL,nil)
-	if err != nil {
-		return nil, fmt.Errorf("error on getting secrets list: %v", err)
+	secretList, err := vaultClient.GetSecrets(vaultURL, nil)
+	if err != nil || *secretList.Value == nil {
+		return nil, fmt.Errorf("error on getting secrets list: %v	", err)
 	}
 
 	for _, secret := range *secretList.Value {
-		secretKeyUrl := strings.Split(*secret.ID,"/")
+		secretKeyUrl := strings.Split(*secret.ID, "/")
 		secretKey := secretKeyUrl[len(secretKeyUrl)-1]
 
 		if strings.HasPrefix(secretKey, servicePrefix) {
@@ -211,8 +226,8 @@ func expandEnviron(vaultName string,
 				secretValue = secretDest
 			}
 
-			exportString := fmt.Sprintf("export %s=\"%s\"", strings.Replace(strings.ToUpper(secretName), "-", "_", -1), secretValue)
-			exportStrings = append(exportStrings, exportString)
+			varName := strings.Replace(strings.ToUpper(secretName), "-", "_", -1)
+			exportVars[varName] = secretValue
 			if err != nil {
 				return nil, fmt.Errorf("failed to update environment variable \"%s\": %v", secretName, err)
 			}
@@ -220,5 +235,5 @@ func expandEnviron(vaultName string,
 
 	}
 
-	return exportStrings, nil
+	return exportVars, nil
 }
