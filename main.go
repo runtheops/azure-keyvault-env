@@ -31,11 +31,6 @@ type option struct {
 	value string
 }
 
-type envVar struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
 var (
 	vaultName       string
 	tenantID        string
@@ -189,7 +184,7 @@ func expandVars(vaultName string,
 
 	secretList, err := vaultClient.GetSecrets(vaultURL, nil)
 	if err != nil || *secretList.Value == nil {
-		return nil, fmt.Errorf("error on getting secrets list: %v	", err)
+		return nil, fmt.Errorf("error on getting secrets list: %v", err)
 	}
 
 	for _, secret := range *secretList.Value {
