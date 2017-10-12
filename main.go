@@ -12,6 +12,7 @@ import (
 
 	"crypto/tls"
 
+	"bytes"
 	"encoding/json"
 	"github.com/Azure/azure-sdk-for-go/dataplane/keyvault"
 	"github.com/Azure/go-autorest/autorest"
@@ -117,7 +118,34 @@ func decodePkcs12(pkcs []byte, password string) (*x509.Certificate, *rsa.Private
 }
 
 func decodePem(filePath string) (*x509.Certificate, *rsa.PrivateKey, error) {
-	cert, err := tls.LoadX509KeyPair(filePath, filePath)
+
+	pemFile, err := ioutil.ReadFile(filePath)
+
+	cliCertIndex := bytes.Index(pemFile, []byte("issuer=/CN=CLI-Login"))
+	if cliCertIndex == 0 {
+		return nil, nil, fmt.Errorf("couldn't find CLI-Login certificate")
+	}
+	cliKeyId := pemFile[cliCertIndex-41 : cliCertIndex-23]
+	cliCertificate := pemFile[cliCertIndex+20:]
+
+	cliCertEnd := bytes.Index(cliCertificate, []byte("-----END CERTIFICATE-----"))
+	if cliCertEnd == 0 {
+		return nil, nil, fmt.Errorf("couldn't parse CLI-Login certificate")
+	}
+	cliCertificate = cliCertificate[:cliCertEnd+25]
+
+	cliPrivateIndex := bytes.Index(pemFile, cliKeyId)
+	if cliCertIndex == 0 {
+		return nil, nil, fmt.Errorf("couldn't find CLI-Login private key")
+	}
+	cliPrivateKey := pemFile[cliPrivateIndex:]
+	cliPrivateEnd := bytes.Index(cliPrivateKey, []byte("-----END PRIVATE KEY-----"))
+	if cliPrivateEnd == 0 {
+		return nil, nil, fmt.Errorf("couldn't parse CLI-Login private key")
+	}
+	cliPrivateKey = cliPrivateKey[:cliPrivateEnd+25]
+
+	cert, err := tls.X509KeyPair(cliCertificate, cliPrivateKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load x509 keypair: %q", err)
 	}
