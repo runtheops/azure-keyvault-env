@@ -225,7 +225,10 @@ func expandVars(vaultName string,
 			if strings.HasSuffix(secretName, "-file") {
 				secretName = secretName[:len(secretName)-5]
 				secretFile = true
+			} else {
+				secretFile = false
 			}
+
 
 			secret, err := vaultClient.GetSecret(vaultURL, secretKey, "")
 			if err != nil {
